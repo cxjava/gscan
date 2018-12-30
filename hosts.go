@@ -1,4 +1,4 @@
-package main
+package gscan
 
 import (
 	"bufio"
@@ -8,9 +8,9 @@ import (
 )
 
 type HostIP struct {
-	Host      string
-	IP        string
-//	Verifying bool
+	Host string
+	IP   string
+	//	Verifying bool
 }
 
 type HostIPTable map[string]HostIP
@@ -36,11 +36,11 @@ func parseHostsFile(file string) (HostIPTable, error) {
 		if len(ss) != 2 {
 			return nil, fmt.Errorf("Invalid line:%d in hosts file:%s", lineno, file)
 		}
-		
+
 		pair := HostIP{
-			Host:      ss[1],
-			IP:        ss[0],
-//			Verifying: false,
+			Host: ss[1],
+			IP:   ss[0],
+			//			Verifying: false,
 		}
 		hosts[ss[1]] = pair
 		lineno = lineno + 1

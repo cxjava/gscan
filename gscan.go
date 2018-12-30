@@ -1,4 +1,4 @@
-package main
+package gscan
 
 import (
 	"encoding/json"
@@ -43,7 +43,7 @@ type GScanConfig struct {
 	ScanGoogleHosts ScanGoogleHostsConfig
 }
 
-func main() {
+func Run() {
 	iprange_file := flag.String("iprange", "./iprange.conf", "IP Range file")
 	conf_file := flag.String("conf", "./gscan.conf", "Config file, json format")
 	flag.Parse()
@@ -166,4 +166,70 @@ _end:
 		log.Printf("All results writed to %s\n", outputfile_path)
 	}
 
+}
+
+func ScanIP(iprange_file, conf_file string) []string {
+	var cfg GScanConfig
+	err := json.Unmarshal([]byte(conf_file), &cfg)
+	if nil != err {
+		fmt.Printf("%v\n", err)
+		return nil
+	}
+	cfg.scanIP = strings.EqualFold(cfg.Operation, "ScanGoogleIP")
+	cfg.ScanMaxSSLRTT = cfg.ScanMaxSSLRTT * time.Millisecond
+	cfg.ScanMinSSLRTT = cfg.ScanMinSSLRTT * time.Millisecond
+	cfg.ScanMaxPingRTT = cfg.ScanMaxPingRTT * time.Millisecond
+	cfg.ScanMinPingRTT = cfg.ScanMinPingRTT * time.Millisecond
+
+	options := ScanOptions{
+		Config: &cfg,
+	}
+	log.Printf("Start loading IP Range file:%s\n", iprange_file)
+	ipranges, err := parseIPRangeFile(iprange_file)
+	if nil != err {
+		fmt.Printf("%v\n", err)
+		return nil
+	}
+	worker_count := cfg.ScanWorker
+	ch := make(chan string)
+	var w sync.WaitGroup
+	w.Add(worker_count)
+	for i := 0; i < worker_count; i++ {
+		go testip_worker(ch, &options, &w)
+	}
+
+	log.Printf("Start scanning available IP\n")
+	start_time := time.Now()
+	eval_count := 0
+	for _, iprange := range ipranges {
+		var i int64
+		for i = iprange.StartIP; i <= iprange.EndIP; i++ {
+			ch <- inet_ntoa(i).String()
+			eval_count = eval_count + 1
+
+			if cfg.scanIP {
+				if options.RecordSize() >= cfg.ScanGoogleIP.RecordLimit {
+					goto _end
+				}
+			} else {
+				if len(options.inputHosts) == 0 {
+					goto _end
+				}
+			}
+		}
+	}
+
+_end:
+	for i := 0; i < worker_count; i++ {
+		ch <- ""
+	}
+	w.Wait()
+	close(ch)
+	log.Printf("Scanned %d IP in %fs, found %d records\n", eval_count, time.Now().Sub(start_time).Seconds(), len(options.records))
+	sort.Sort(&(options.records))
+	ss := make([]string, 0)
+	for _, rec := range options.records {
+		ss = append(ss, rec.IP)
+	}
+	return ss
 }

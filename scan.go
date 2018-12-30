@@ -1,4 +1,4 @@
-package main
+package gscan
 
 import (
 	"crypto/tls"

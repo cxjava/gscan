@@ -1,4 +1,4 @@
-package main
+package gscan
 
 import (
 	"bufio"
@@ -8,6 +8,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/mikioh/ipaddr"
 )
 
 func inet_ntoa(ipnr int64) net.IP {
@@ -76,19 +78,77 @@ func parseIPRangeFile(file string) ([]*IPRange, error) {
 	scanner := bufio.NewScanner(f)
 	lineno := 1
 	for scanner.Scan() {
-		line := scanner.Text()
-		line = strings.TrimSpace(line)
+		strline := scanner.Text()
+		strline = strings.TrimSpace(strline)
 		//comment start with '#'
-		if strings.HasPrefix(line, "#") || len(line) == 0 {
+		if strings.HasPrefix(strline, "#") || len(strline) == 0 {
 			continue
 		}
-		var startIP, endIP string
-		if strings.Contains(line, "/") {
-			ip, ipnet, err := net.ParseCIDR(line)
+		var begin, end string
+		if strings.Contains(strline, "-") && strings.Contains(strline, "/") {
+			ss := strings.Split(strline, "-")
+			if len(ss) == 2 {
+				iprange1, iprange2 := ss[0], ss[1]
+				// "1.9.22.0/24-1.9.22.0"
+				if strings.Contains(iprange1, "/") && !strings.Contains(iprange2, "/") {
+					begin = iprange1[:strings.Index(iprange1, "/")]
+					if begin == iprange2 {
+						iprange2 = iprange1
+					}
+				} else if strings.Contains(iprange2, "/") {
+					// 1.9.22.0/24-1.9.22.0/24
+					begin = iprange1[:strings.Index(iprange1, "/")]
+				} else {
+					// 1.9.22.0-1.9.23.0/24
+					begin = iprange1
+				}
+				// c, err := ipaddr.Parse(begin + "," + iprange2)
+				// if err != nil {
+				// 	panic(err)
+				// }
+				// return ipaddr.Aggregate(c.List())
+
+				if c, err := ipaddr.Parse(iprange2); err == nil {
+					end = c.Last().IP.String()
+				}
+			}
+		} else if strings.Contains(strline, "-") {
+			num_regions := strings.Split(strline, ".")
+			if len(num_regions) == 4 {
+				// "xxx.xxx.xxx-xxx.xxx-xxx"
+				for _, region := range num_regions {
+					if strings.Contains(region, "-") {
+						a := strings.Split(region, "-")
+						s, e := a[0], a[1]
+						begin += "." + s
+						end += "." + e
+					} else {
+						begin += "." + region
+						end += "." + region
+					}
+				}
+				begin = begin[1:]
+				end = end[1:]
+			} else {
+				// "xxx.xxx.xxx.xxx-xxx.xxx.xxx.xxx"
+				a := strings.Split(strline, "-")
+				begin, end = a[0], a[1]
+				if 1 <= len(end) && len(end) <= 3 {
+					prefix := begin[0:strings.LastIndex(begin, ".")]
+					end = prefix + "." + end
+				}
+			}
+		} else if strings.HasSuffix(strline, ".") {
+			// "xxx.xxx.xxx."
+			begin = strline + "0"
+			end = strline + "255"
+		} else if strings.Contains(strline, "/") {
+			// "xxx.xxx.xxx.xxx/xx"
+			ip, ipnet, err := net.ParseCIDR(strline)
 			if nil != err {
 				return nil, err
 			}
-			startIP = ip.String()
+			begin = ip.String()
 			ones, _ := ipnet.Mask.Size()
 			v := inet_aton(ip)
 			var tmp uint32
@@ -96,16 +156,14 @@ func parseIPRangeFile(file string) ([]*IPRange, error) {
 			tmp = tmp >> uint32(ones)
 			v = v | int64(tmp)
 			endip := inet_ntoa(v)
-			endIP = endip.String()
+			end = endip.String()
 		} else {
-			ss := strings.Split(line, "-")
-			if len(ss) != 2 {
-				return nil, fmt.Errorf("Invalid line:%d in IP Range file:%s", lineno, file)
-			}
-			startIP, endIP = ss[0], ss[1]
+			// "xxx.xxx.xxx.xxx"
+			begin = strline
+			end = strline
 		}
 
-		iprange, err := parseIPRange(startIP, endIP)
+		iprange, err := parseIPRange(begin, end)
 		if nil != err {
 			return nil, fmt.Errorf("Invalid line:%d in IP Range file:%s", lineno, file)
 		}
