@@ -213,7 +213,10 @@ func test_conn_onedrive(conn *tls.Conn, options *ScanOptions, record *ScanRecord
 				return true
 			}
 		} else {
-			return true
+			if res != nil && (res.Header.Values("X-Request-Id") != nil ||
+				res.Header.Values("X-Msedge-Ref") != nil) {
+				return true
+			}
 		}
 	}
 	return false
