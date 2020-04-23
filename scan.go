@@ -206,10 +206,10 @@ func test_conn_onedrive(conn *tls.Conn, options *ScanOptions, record *ScanRecord
 		req, _ := http.NewRequest("HEAD", "https://"+verifyHost, nil)
 		res, err := httputil.NewClientConn(conn, nil).Do(req)
 		if nil != err || (res.StatusCode >= 400 && res.StatusCode != 405) {
-			if res.Header.Values("X-Errorcodechain") != nil ||
+			if res != nil && (res.Header.Values("X-Errorcodechain") != nil ||
 				res.Header.Values("X-Qosstats") != nil ||
 				res.Header.Values("X-Clienterrorcode") != nil ||
-				res.Header.Values("X-Msnserver") != nil {
+				res.Header.Values("X-Msnserver") != nil) {
 				return true
 			}
 		} else {
