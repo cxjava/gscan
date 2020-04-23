@@ -166,7 +166,33 @@ func find_match_hosts(conn *tls.Conn, options *ScanOptions, record *ScanRecord) 
 	return len(record.MatchHosts) > 0
 }
 
-func test_conn(conn *tls.Conn, options *ScanOptions, record *ScanRecord) bool {
+func test_conn_google(conn *tls.Conn, options *ScanOptions, record *ScanRecord) bool {
+	//check SSL certificate
+	success := false
+	for _, cert := range conn.ConnectionState().PeerCertificates {
+		for _, verifyHost := range options.Config.ScanGoogleIP.SSLCertVerifyHosts {
+			if cert.VerifyHostname(verifyHost) != nil {
+				return false
+			} else {
+				success = true
+			}
+		}
+		if success {
+			break
+		}
+	}
+	for _, verifyHost := range options.Config.ScanGoogleIP.HTTPVerifyHosts {
+		conn.SetReadDeadline(time.Now().Add(record.httpVerifyTimeout))
+		req, _ := http.NewRequest("HEAD", "https://"+verifyHost, nil)
+		res, err := httputil.NewClientConn(conn, nil).Do(req)
+		if nil != err || res.StatusCode >= 400 {
+			return false
+		}
+	}
+	return true
+}
+
+func test_conn_onedrive(conn *tls.Conn, options *ScanOptions, record *ScanRecord) bool {
 	//check SSL certificate
 	success := false
 	for _, cert := range conn.ConnectionState().PeerCertificates {
@@ -232,7 +258,8 @@ func testip_once(ip string, options *ScanOptions, record *ScanRecord) bool {
 	success := true
 	record.httpVerifyTimeout = options.Config.ScanMaxSSLRTT - sslRTT
 	if options.Config.scanIP {
-		success = test_conn(conn, options, record)
+		//success = test_conn_google(conn, options, record)
+		success = test_conn_onedrive(conn, options, record)
 	} else {
 		success = find_match_hosts(conn, options, record)
 	}
