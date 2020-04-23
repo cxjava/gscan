@@ -194,28 +194,29 @@ func test_conn_google(conn *tls.Conn, options *ScanOptions, record *ScanRecord) 
 
 func test_conn_onedrive(conn *tls.Conn, options *ScanOptions, record *ScanRecord) bool {
 	//check SSL certificate
-	success := false
 	for _, cert := range conn.ConnectionState().PeerCertificates {
 		for _, verifyHost := range options.Config.ScanGoogleIP.SSLCertVerifyHosts {
-			if cert.VerifyHostname(verifyHost) != nil {
-				return false
-			} else {
-				success = true
+			if cert.VerifyHostname(verifyHost) == nil {
+				return true
 			}
-		}
-		if success {
-			break
 		}
 	}
 	for _, verifyHost := range options.Config.ScanGoogleIP.HTTPVerifyHosts {
 		conn.SetReadDeadline(time.Now().Add(record.httpVerifyTimeout))
 		req, _ := http.NewRequest("HEAD", "https://"+verifyHost, nil)
 		res, err := httputil.NewClientConn(conn, nil).Do(req)
-		if nil != err || res.StatusCode >= 400 {
-			return false
+		if nil != err || (res.StatusCode >= 400 && res.StatusCode != 405) {
+			if len(res.Header.Values("X-Clienterrorcode")) > 0 ||
+				len(res.Header.Values("X-Errorcodechain")) > 0 ||
+				len(res.Header.Values("X-Qosstats")) > 0 ||
+				len(res.Header.Values("X-Msnserver")) > 0 {
+				return true
+			}
+		} else {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 func testip_once(ip string, options *ScanOptions, record *ScanRecord) bool {
